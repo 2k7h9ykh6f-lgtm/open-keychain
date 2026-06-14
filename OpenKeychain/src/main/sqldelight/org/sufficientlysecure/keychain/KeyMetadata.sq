@@ -1,0 +1,28 @@
+import java.lang.Boolean;
+import java.util.Date;
+
+-- NOTE: This table's data is NOT bound to keyrings_public! There may be
+-- entries here that no longer have a corresponding key in the database!
+CREATE TABLE IF NOT EXISTS key_metadata (
+    master_key_id INTEGER PRIMARY KEY,
+    last_updated INTEGER AS Date,
+    seen_on_keyservers INTEGER AS Boolean
+);
+
+selectByMasterKeyId:
+SELECT *
+    FROM key_metadata
+    WHERE master_key_id = ?;
+
+deleteAllLastUpdatedTimes:
+UPDATE key_metadata
+    SET last_updated = NULL, seen_on_keyservers = NULL;
+
+replaceKeyMetadata:
+REPLACE INTO key_metadata (master_key_id, last_updated, seen_on_keyservers) VALUES (?, ?, ?);
+
+selectFingerprintsForKeysOlderThan:
+SELECT fingerprint
+    FROM keys
+        LEFT JOIN key_metadata USING (master_key_id)
+    WHERE rank = 0 AND (last_updated IS NULL OR last_updated < ?);

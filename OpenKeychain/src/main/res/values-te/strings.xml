@@ -1,0 +1,116 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<resources>
+  <!--GENERAL: Please put all strings inside quotes as described in example 1 on
+    http://developer.android.com/guide/topics/resources/string-resource.html (scroll down to "Escaping apostrophes and quotes").-->
+  <!--title-->
+  <string name="title_preferences">సెట్టింగులు</string>
+  <string name="title_help">సహాయం</string>
+  <!--section-->
+  <!--button-->
+  <string name="btn_do_not_save">రద్దు</string>
+  <string name="btn_next">తరువాత</string>
+  <string name="btn_share_decrypted_text">వంతు</string>
+  <!--Shortcut Strings-->
+  <!--Content Description-->
+  <!--menu-->
+  <string name="menu_preferences">సెట్టింగులు</string>
+  <string name="menu_help">సహాయం</string>
+  <string name="menu_search">శోధన</string>
+  <string name="menu_open">తెరవండి</string>
+  <string name="menu_change_password">పాస్ వర్డ్ ను మార్చండి</string>
+  <!--label-->
+  <string name="label_name">Name</string>
+  <string name="label_enter_smartpgp_authority_name">Name</string>
+  <!--Proxy Preferences-->
+  <string name="pref_proxy_tor_title">Enable Tor</string>
+  <!--proxy type choices and values-->
+  <!--OrbotHelper strings-->
+  <!--InstallDialogFragment strings-->
+  <string name="orbot_install_dialog_cancel">రద్దు</string>
+  <!--StartOrbotDialogFragment strings-->
+  <string name="orbot_start_dialog_cancel">రద్దు</string>
+  <!--choice-->
+  <string name="choice_none"> ఏమీ కాదు</string>
+  <!--sentences-->
+  <string name="passphrase_for_symmetric_encryption">రహస్య సంకేతం తెలపండి
+</string>
+  <string name="passphrase_for_any">రహస్య సంకేతం తెలపండి
+</string>
+  <!--errors
+         no punctuation, all lowercase,
+         they will be put after "error_message", e.g. "Error: file not found"-->
+  <!--errors without preceding Error:-->
+  <!--results shown after decryption/verification-->
+  <!--Add keys-->
+  <!--progress dialogs, usually ending in '…'-->
+  <string name="progress_cancel">రద్దు</string>
+  <!--action strings-->
+  <!--key bit length selections-->
+  <!--elliptic curve names-->
+  <!--not in for now, see SaveKeyringParcel
+    <string name="key_curve_bp_p256">"Brainpool P-256"</string>
+    <string name="key_curve_bp_p384">"Brainpool P-384"</string>
+    <string name="key_curve_bp_p512">"Brainpool P-512"</string>-->
+  <!--compression-->
+  <!--Help-->
+  <string name="help_tab_about">గురించి</string>
+  <string name="help_about_version">Version:</string>
+  <!--Import-->
+  <!--Generic result toast-->
+  <!--Import result toast-->
+  <!--Delete result toast-->
+  <!--Revoke result toast (snackbar)-->
+  <!--Certify result toast-->
+  <!--Intent labels-->
+  <!--Remote API-->
+  <!--Share-->
+  <!--retry upload dialog-->
+  <!--Delete or revoke private key dialog-->
+  <!--Delete Or Revoke Dialog spinner-->
+  <!--Key list-->
+  <!--Key view-->
+  <string name="key_view_tab_share">వంతు</string>
+  <!--Key trust-->
+  <!--Edit key-->
+  <!--Create key-->
+  <!--View key-->
+  <!--Add/Edit keyserver-->
+  <!--Add/Edit SmartPGP authority-->
+  <!--Navigation Drawer-->
+  <!--hints-->
+  <!--certs-->
+  <!--LogType log messages. Errors should have _ERROR_ in their name and end with a !-->
+  <!--Import Public log entries-->
+  <!--Import Secret log entries-->
+  <!--Keyring Canonicalization log entries-->
+  <!--Keyring merging log entries-->
+  <!--createSecretKeyRing-->
+  <!--modifySecretKeyRing-->
+  <!--Edit Key (higher level than modify)-->
+  <!--Promote key-->
+  <!--Other messages used in OperationLogs-->
+  <!--Messages for DecryptVerify operation-->
+  <!--Messages for VerifySignedLiteralData operation-->
+  <!--Messages for SignEncrypt operation-->
+  <!--Messages for PgpSignEncrypt operation-->
+  <!--Messages for Authentication operation-->
+  <!--Messages for Mime parsing operation-->
+  <!--PassphraseCache-->
+  <!--Keyserver sync-->
+  <!--First Time-->
+  <!--unsorted-->
+  <!--Android Account-->
+  <!--Passphrase wizard-->
+  <!--TODO: rename all the things!-->
+  <!--<string name="enter_passphrase_twice">Enter password twice</string>-->
+  <string name="enter_passphrase">రహస్య సంకేతం తెలపండి
+</string>
+  <!--<string name="nfc_text">Please place a NFC tag near your device</string>-->
+  <!--Other Linked Identity strings-->
+  <string name="share_log_dialog_share_button">వంతు</string>
+  <string name="share_log_dialog_cancel_button">రద్దు</string>
+  <string name="prompt_fidesmo_pgp_install_button_negative">రద్దు</string>
+  <string name="prompt_fidesmo_app_install_button_negative">రద్దు</string>
+  <string name="redirect_import_key_no">మూసివేయు</string>
+  <string name="button_cancel">రద్దు</string>
+</resources>

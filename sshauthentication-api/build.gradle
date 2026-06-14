@@ -1,0 +1,56 @@
+apply plugin: 'com.android.library'
+apply plugin: 'maven-publish'
+
+android {
+    defaultConfig {
+        minSdkVersion 14
+        versionCode 3
+        versionName "3.0"
+        namespace 'org.openintents.ssh.authentication'
+        if (project.hasProperty('compileSdkVersion')) {
+            compileSdk rootProject.ext.compileSdkVersion
+        } else {
+            compileSdk 28
+        }
+    }
+
+    // Do not abort build if lint finds errors
+    lintOptions {
+        abortOnError false
+    }
+    buildFeatures {
+        aidl true
+    }
+}
+
+/*
+// https://developer.android.com/studio/build/maven-publish-plugin
+afterEvaluate {
+    publishing {
+        publications {
+            release(MavenPublication) {
+                from components.release
+
+                groupId = 'org.sufficientlysecure'
+                artifactId = 'sshauthentication-api'
+                version = android.defaultConfig.versionName
+
+                pom {
+                    url = 'https://github.com/open-keychain'
+                    licenses {
+                        license {
+                            name = 'The Apache Software License, Version 2.0'
+                            url = 'http://www.apache.org/licenses/LICENSE-2.0.txt'
+                            distribution = 'repo'
+                        }
+                    }
+                    organization {
+                        name = 'Confidential Technologies GmbH'
+                        url = 'https://www.cotech.de'
+                    }
+                }
+            }
+        }
+    }
+}
+*/
