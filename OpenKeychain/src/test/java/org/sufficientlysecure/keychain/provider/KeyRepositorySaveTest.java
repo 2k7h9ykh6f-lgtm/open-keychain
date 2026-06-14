@@ -42,6 +42,8 @@ import org.sufficientlysecure.keychain.util.IterableIterator;
 import java.util.Arrays;
 import java.util.Iterator;
 
+import static org.sufficientlysecure.keychain.support.KeyringTestingHelper.readRingFromResource;
+
 @SuppressWarnings("WeakerAccess")
 @RunWith(KeychainTestRunner.class)
 public class KeyRepositorySaveTest {
@@ -252,10 +254,6 @@ public class KeyRepositorySaveTest {
                     signId, mDatabaseInteractor.getSecretSignId(masterKeyId));
         }
 
-    }
-
-    UncachedKeyRing readRingFromResource(String name) throws Exception {
-        return UncachedKeyRing.fromStream(KeyRepositorySaveTest.class.getResourceAsStream(name)).next();
     }
 
 }

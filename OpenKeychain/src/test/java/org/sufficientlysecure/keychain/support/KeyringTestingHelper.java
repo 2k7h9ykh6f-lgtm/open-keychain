@@ -36,6 +36,7 @@ import android.content.Context;
 import org.bouncycastle.util.Arrays;
 import org.sufficientlysecure.keychain.operations.results.SaveKeyringResult;
 import org.sufficientlysecure.keychain.pgp.UncachedKeyRing;
+import org.sufficientlysecure.keychain.pgp.UncachedPublicKey;
 import org.sufficientlysecure.keychain.pgp.exception.PgpGeneralException;
 import org.sufficientlysecure.keychain.daos.KeyRepository;
 import org.sufficientlysecure.keychain.daos.KeyWritableRepository;
@@ -366,5 +367,46 @@ public class KeyringTestingHelper {
 
     public static UncachedKeyRing readRingFromResource(String name) throws Exception {
         return UncachedKeyRing.fromStream(KeyringTestingHelper.class.getResourceAsStream(name)).next();
+    }
+
+    /**
+     * Reads a keyring from a classpath resource and saves it as a secret keyring into the
+     * per-test database, asserting that the import succeeded.
+     *
+     * Isolation note: tests run under Robolectric with {@code Constants.IS_RUNNING_UNITTEST},
+     * so {@code KeychainDatabase.getInstance()} hands out a brand new database for every test
+     * method. Callers therefore never share mutable database state between tests.
+     *
+     * @return the parsed keyring, so callers can derive expected values from it.
+     */
+    public static UncachedKeyRing saveSecretKeyringFromResource(Context context, String resourceName)
+            throws Exception {
+        UncachedKeyRing ring = readRingFromResource(resourceName);
+        SaveKeyringResult result = KeyWritableRepository.create(context).saveSecretKeyRing(ring);
+        if (!result.success()) {
+            throw new AssertionError("Expected secret keyring import to succeed: " + resourceName);
+        }
+        return ring;
+    }
+
+    /**
+     * Reads a keyring from a classpath resource and saves it as a public keyring into the
+     * per-test database, asserting that the import succeeded.
+     *
+     * @return the parsed keyring, so callers can derive expected values from it.
+     */
+    public static UncachedKeyRing savePublicKeyringFromResource(Context context, String resourceName)
+            throws Exception {
+        UncachedKeyRing ring = readRingFromResource(resourceName);
+        SaveKeyringResult result = KeyWritableRepository.create(context).savePublicKeyRing(ring);
+        if (!result.success()) {
+            throw new AssertionError("Expected public keyring import to succeed: " + resourceName);
+        }
+        return ring;
+    }
+
+    /** Returns all public (sub)keys of a keyring as a list, master key first. */
+    public static List<UncachedPublicKey> publicKeysOf(UncachedKeyRing ring) {
+        return itToList(ring.getPublicKeys());
     }
 }
