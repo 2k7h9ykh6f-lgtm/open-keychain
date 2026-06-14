@@ -24,8 +24,10 @@ import java.io.InputStream;
 import java.io.PrintStream;
 import java.security.Security;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.Iterator;
+import java.util.List;
 
 import org.bouncycastle.bcpg.BCPGInputStream;
 import org.bouncycastle.bcpg.Packet;
@@ -1142,6 +1144,392 @@ public class PgpEncryptDecryptTest {
         Assert.assertEquals(mStaticRing1.getMasterKeyId(), requiredInputParcel.getMasterKeyIds()[0]);
         Assert.assertEquals(mStaticRing1.getMasterKeyId(), requiredInputParcel.getMasterKeyIds()[1]);
         Assert.assertEquals(mStaticRing2.getMasterKeyId(), requiredInputParcel.getMasterKeyIds()[2]);
+    }
+
+    /** A single row of {@link #testSignEncryptSignatureStatusMatrix()}. */
+    private static final class SignerCase {
+        final String label;
+        final Passphrase passphrase;
+        final long expectedRequestedMasterKeyId;
+        final boolean deleteSignerKeyFirst;
+        final int expectedSignatureResult;
+
+        SignerCase(String label, Passphrase passphrase, long expectedRequestedMasterKeyId,
+                boolean deleteSignerKeyFirst, int expectedSignatureResult) {
+            this.label = label;
+            this.passphrase = passphrase;
+            this.expectedRequestedMasterKeyId = expectedRequestedMasterKeyId;
+            this.deleteSignerKeyFirst = deleteSignerKeyFirst;
+            this.expectedSignatureResult = expectedSignatureResult;
+        }
+    }
+
+    @Test
+    public void testSignEncryptSignatureStatusMatrix() {
+        // Table-driven: a single message encrypted to ring1+ring2 and signed by ring1 is
+        // decrypted/verified under two states of the keyring database. This exercises the
+        // mapping from "is the signer's key available" to the reported signature status,
+        // including the signer-mismatch case where the signing key cannot be found.
+        String plaintext = "dies ist ein plaintext ☭";
+        byte[] ciphertext;
+
+        { // encrypt to both rings, signed by ring1
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            ByteArrayInputStream in = new ByteArrayInputStream(plaintext.getBytes());
+
+            PgpSignEncryptOperation op = new PgpSignEncryptOperation(RuntimeEnvironment.getApplication(),
+                    KeyWritableRepository.create(RuntimeEnvironment.getApplication()), null);
+
+            InputData data = new InputData(in, in.available());
+
+            PgpSignEncryptData.Builder pgpData = PgpSignEncryptData.builder();
+            pgpData.setEncryptionMasterKeyIds(new long[] {
+                    mStaticRing1.getMasterKeyId(),
+                    mStaticRing2.getMasterKeyId()
+            });
+            pgpData.setSignatureMasterKeyId(mStaticRing1.getMasterKeyId());
+            pgpData.setSignatureSubKeyId(KeyringTestingHelper.getSubkeyId(mStaticRing1, 1));
+            pgpData.setSymmetricEncryptionAlgorithm(
+                    PgpSecurityConstants.OpenKeychainSymmetricKeyAlgorithmTags.AES_128);
+
+            PgpSignEncryptResult result = op.execute(pgpData.build(),
+                    CryptoInputParcel.createCryptoInputParcel(new Date(), mKeyPhrase1), data, out);
+            Assert.assertTrue("encryption must succeed", result.success());
+
+            ciphertext = out.toByteArray();
+        }
+
+        List<SignerCase> cases = Arrays.asList(
+                new SignerCase("signer key present -> confirmed",
+                        mKeyPhrase1, mStaticRing1.getMasterKeyId(), false,
+                        OpenPgpSignatureResult.RESULT_VALID_KEY_CONFIRMED),
+                new SignerCase("signer key removed -> key missing",
+                        mKeyPhrase2, mStaticRing2.getMasterKeyId(), true,
+                        OpenPgpSignatureResult.RESULT_KEY_MISSING)
+        );
+
+        for (SignerCase testCase : cases) {
+            if (testCase.deleteSignerKeyFirst) {
+                KeyWritableRepository.create(RuntimeEnvironment.getApplication())
+                        .deleteKeyRing(mStaticRing1.getMasterKeyId());
+            }
+
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            ByteArrayInputStream in = new ByteArrayInputStream(ciphertext);
+            InputData data = new InputData(in, in.available());
+
+            PgpDecryptVerifyOperation op = operationWithFakePassphraseCache(
+                    testCase.passphrase, testCase.expectedRequestedMasterKeyId, null);
+            PgpDecryptVerifyInputParcel input = PgpDecryptVerifyInputParcel.builder().build();
+            DecryptVerifyResult result = op.execute(input,
+                    CryptoInputParcel.createCryptoInputParcel(), data, out);
+
+            Assert.assertTrue("[" + testCase.label + "] decryption must succeed", result.success());
+            Assert.assertArrayEquals("[" + testCase.label + "] decrypted text should equal plaintext",
+                    plaintext.getBytes(), out.toByteArray());
+            Assert.assertEquals("[" + testCase.label + "] decryptionResult should be RESULT_ENCRYPTED",
+                    OpenPgpDecryptionResult.RESULT_ENCRYPTED, result.getDecryptionResult().getResult());
+            Assert.assertEquals("[" + testCase.label + "] unexpected signature status",
+                    testCase.expectedSignatureResult, result.getSignatureResult().getResult());
+        }
+    }
+
+    @Test
+    public void testCorruptedAsymmetricCiphertextIsRejected() {
+        // Table-driven: a valid asymmetric ciphertext is mutated in several ways and each
+        // mutation must be rejected -- it must never yield a successful decryption to the
+        // original plaintext (whether by returning a failure or by throwing).
+        String plaintext = "dies ist ein plaintext ☭";
+        byte[] ciphertext;
+
+        { // encrypt to ring1
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            ByteArrayInputStream in = new ByteArrayInputStream(plaintext.getBytes());
+
+            PgpSignEncryptOperation op = new PgpSignEncryptOperation(RuntimeEnvironment.getApplication(),
+                    KeyWritableRepository.create(RuntimeEnvironment.getApplication()), null);
+
+            InputData data = new InputData(in, in.available());
+
+            PgpSignEncryptData.Builder pgpData = PgpSignEncryptData.builder();
+            pgpData.setEncryptionMasterKeyIds(new long[] { mStaticRing1.getMasterKeyId() });
+            pgpData.setSymmetricEncryptionAlgorithm(
+                    PgpSecurityConstants.OpenKeychainSymmetricKeyAlgorithmTags.AES_128);
+
+            PgpSignEncryptResult result = op.execute(pgpData.build(),
+                    CryptoInputParcel.createCryptoInputParcel(new Date()), data, out);
+            Assert.assertTrue("encryption must succeed", result.success());
+
+            ciphertext = out.toByteArray();
+        }
+
+        // sanity: the pristine ciphertext must decrypt, otherwise the mutations below prove nothing
+        Assert.assertTrue("baseline ciphertext must decrypt to plaintext",
+                decryptsToPlaintext(ciphertext, plaintext));
+
+        List<String> labels = new ArrayList<>();
+        List<byte[]> mutations = new ArrayList<>();
+
+        byte[] flippedMiddle = Arrays.copyOf(ciphertext, ciphertext.length);
+        flippedMiddle[flippedMiddle.length / 2] ^= (byte) 0xFF;
+        labels.add("bit-flip in the middle of the packet");
+        mutations.add(flippedMiddle);
+
+        byte[] flippedTail = Arrays.copyOf(ciphertext, ciphertext.length);
+        flippedTail[flippedTail.length - 1] ^= (byte) 0xFF;
+        labels.add("bit-flip in the trailing integrity bytes");
+        mutations.add(flippedTail);
+
+        byte[] truncated = Arrays.copyOf(ciphertext, Math.max(1, ciphertext.length - 10));
+        labels.add("ciphertext truncated by 10 bytes");
+        mutations.add(truncated);
+
+        byte[] appended = Arrays.copyOf(ciphertext, ciphertext.length + 8);
+        labels.add("8 trailing garbage bytes appended");
+        mutations.add(appended);
+
+        for (int i = 0; i < mutations.size(); i++) {
+            Assert.assertFalse("[" + labels.get(i) + "] corrupted ciphertext must not decrypt to plaintext",
+                    decryptsToPlaintext(mutations.get(i), plaintext));
+        }
+    }
+
+    @Test
+    public void testAsymmetricMissingPrivateKeyFailsDecryption() {
+        // Encrypt to ring1 only, then remove the secret key: with no private key available
+        // for any recipient, decryption must fail and leak no plaintext.
+        String plaintext = "dies ist ein plaintext ☭";
+        byte[] ciphertext;
+
+        { // encrypt to ring1 only
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            ByteArrayInputStream in = new ByteArrayInputStream(plaintext.getBytes());
+
+            PgpSignEncryptOperation op = new PgpSignEncryptOperation(RuntimeEnvironment.getApplication(),
+                    KeyWritableRepository.create(RuntimeEnvironment.getApplication()), null);
+
+            InputData data = new InputData(in, in.available());
+
+            PgpSignEncryptData.Builder pgpData = PgpSignEncryptData.builder();
+            pgpData.setEncryptionMasterKeyIds(new long[] { mStaticRing1.getMasterKeyId() });
+            pgpData.setSymmetricEncryptionAlgorithm(
+                    PgpSecurityConstants.OpenKeychainSymmetricKeyAlgorithmTags.AES_128);
+
+            PgpSignEncryptResult result = op.execute(pgpData.build(),
+                    CryptoInputParcel.createCryptoInputParcel(new Date()), data, out);
+            Assert.assertTrue("encryption must succeed", result.success());
+
+            ciphertext = out.toByteArray();
+        }
+
+        // remove the only recipient's secret key
+        KeyWritableRepository.create(RuntimeEnvironment.getApplication())
+                .deleteKeyRing(mStaticRing1.getMasterKeyId());
+
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        ByteArrayInputStream in = new ByteArrayInputStream(ciphertext);
+        InputData data = new InputData(in, in.available());
+
+        PgpDecryptVerifyOperation op = operationWithFakePassphraseCache(mKeyPhrase1, null, null);
+        PgpDecryptVerifyInputParcel input = PgpDecryptVerifyInputParcel.builder().build();
+        DecryptVerifyResult result = op.execute(input,
+                CryptoInputParcel.createCryptoInputParcel(), data, out);
+
+        Assert.assertFalse("decryption without the private key must fail", result.success());
+        Assert.assertEquals("no plaintext must be produced", 0, out.size());
+        Assert.assertNull("decryptionResult should be null on failure", result.getDecryptionResult());
+        Assert.assertNull("signatureResult should be null on failure", result.getSignatureResult());
+    }
+
+    @Test
+    public void testAsymmetricWrongPassphraseFailsDecryption() {
+        // Encrypt to ring1, then attempt decryption with an incorrect key passphrase: the
+        // operation must fail (not merely pend) and leak no plaintext.
+        String plaintext = "dies ist ein plaintext ☭";
+        byte[] ciphertext;
+
+        { // encrypt to ring1
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            ByteArrayInputStream in = new ByteArrayInputStream(plaintext.getBytes());
+
+            PgpSignEncryptOperation op = new PgpSignEncryptOperation(RuntimeEnvironment.getApplication(),
+                    KeyWritableRepository.create(RuntimeEnvironment.getApplication()), null);
+
+            InputData data = new InputData(in, in.available());
+
+            PgpSignEncryptData.Builder pgpData = PgpSignEncryptData.builder();
+            pgpData.setEncryptionMasterKeyIds(new long[] { mStaticRing1.getMasterKeyId() });
+            pgpData.setSymmetricEncryptionAlgorithm(
+                    PgpSecurityConstants.OpenKeychainSymmetricKeyAlgorithmTags.AES_128);
+
+            PgpSignEncryptResult result = op.execute(pgpData.build(),
+                    CryptoInputParcel.createCryptoInputParcel(new Date()), data, out);
+            Assert.assertTrue("encryption must succeed", result.success());
+
+            ciphertext = out.toByteArray();
+        }
+
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        ByteArrayInputStream in = new ByteArrayInputStream(ciphertext);
+        InputData data = new InputData(in, in.available());
+
+        Passphrase wrongPassphrase =
+                new Passphrase(new String(mKeyPhrase1.getCharArray()) + "x");
+        PgpDecryptVerifyOperation op = operationWithFakePassphraseCache(wrongPassphrase, null, null);
+        PgpDecryptVerifyInputParcel input = PgpDecryptVerifyInputParcel.builder().build();
+        DecryptVerifyResult result = op.execute(input,
+                CryptoInputParcel.createCryptoInputParcel(), data, out);
+
+        Assert.assertFalse("decryption with a wrong passphrase must fail", result.success());
+        Assert.assertFalse("a wrong passphrase is not a pending-input condition", result.isPending());
+        Assert.assertEquals("no plaintext must be produced", 0, out.size());
+    }
+
+    @Test
+    public void testSignatureOnlyMessageVerifiesAndTamperIsDetected() {
+        // A signed-but-not-encrypted message must verify as not-encrypted with a confirmed
+        // signature; tampering with the signed payload must invalidate that signature.
+        String plaintext = "dies ist ein plaintext ☭";
+        byte[] signedMessage;
+
+        { // sign only (inline literal), not encrypted
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            ByteArrayInputStream in = new ByteArrayInputStream(plaintext.getBytes());
+
+            PgpSignEncryptOperation op = new PgpSignEncryptOperation(RuntimeEnvironment.getApplication(),
+                    KeyWritableRepository.create(RuntimeEnvironment.getApplication()), null);
+
+            InputData data = new InputData(in, in.available());
+
+            PgpSignEncryptData.Builder pgpData = PgpSignEncryptData.builder();
+            pgpData.setSignatureMasterKeyId(mStaticRing1.getMasterKeyId());
+            pgpData.setSignatureSubKeyId(KeyringTestingHelper.getSubkeyId(mStaticRing1, 1));
+            pgpData.setCleartextSignature(false);
+            pgpData.setDetachedSignature(false);
+
+            PgpSignEncryptResult result = op.execute(pgpData.build(),
+                    CryptoInputParcel.createCryptoInputParcel(mKeyPhrase1), data, out);
+            Assert.assertTrue("signing must succeed", result.success());
+
+            signedMessage = out.toByteArray();
+        }
+
+        { // verification succeeds and reports the message as not encrypted
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            ByteArrayInputStream in = new ByteArrayInputStream(signedMessage);
+            InputData data = new InputData(in, in.available());
+
+            PgpDecryptVerifyOperation op = operationWithFakePassphraseCache(null, null, null);
+            PgpDecryptVerifyInputParcel input = PgpDecryptVerifyInputParcel.builder().build();
+            DecryptVerifyResult result = op.execute(input,
+                    CryptoInputParcel.createCryptoInputParcel(), data, out);
+
+            Assert.assertTrue("verification must succeed", result.success());
+            Assert.assertArrayEquals("verified text should equal plaintext",
+                    plaintext.getBytes(), out.toByteArray());
+            Assert.assertEquals("message must be reported as not encrypted",
+                    OpenPgpDecryptionResult.RESULT_NOT_ENCRYPTED, result.getDecryptionResult().getResult());
+            Assert.assertEquals("signature must be valid and confirmed",
+                    OpenPgpSignatureResult.RESULT_VALID_KEY_CONFIRMED, result.getSignatureResult().getResult());
+        }
+
+        { // tampering with the signed payload must invalidate the signature
+            byte[] tampered = Arrays.copyOf(signedMessage, signedMessage.length);
+            tampered[tampered.length / 2] ^= (byte) 0xFF;
+
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            ByteArrayInputStream in = new ByteArrayInputStream(tampered);
+            InputData data = new InputData(in, in.available());
+
+            PgpDecryptVerifyOperation op = operationWithFakePassphraseCache(null, null, null);
+            PgpDecryptVerifyInputParcel input = PgpDecryptVerifyInputParcel.builder().build();
+
+            boolean confirmedSignature;
+            try {
+                DecryptVerifyResult result = op.execute(input,
+                        CryptoInputParcel.createCryptoInputParcel(), data, out);
+                confirmedSignature = result.success()
+                        && result.getSignatureResult() != null
+                        && result.getSignatureResult().getResult()
+                                == OpenPgpSignatureResult.RESULT_VALID_KEY_CONFIRMED;
+            } catch (RuntimeException e) {
+                // a thrown exception is an acceptable rejection of tampered input
+                confirmedSignature = false;
+            }
+            Assert.assertFalse("tampered signed message must not verify as confirmed",
+                    confirmedSignature);
+        }
+    }
+
+    @Test
+    public void testEncryptThenSignMessageDecryptsAndVerifies() {
+        // A message encrypted to ring2 and signed by ring1 (distinct encryption and signing
+        // keys) must round-trip: decrypt via ring2 and report ring1's signature as confirmed.
+        String plaintext = "dies ist ein plaintext ☭";
+        byte[] ciphertext;
+
+        { // encrypt to ring2, signed by ring1
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            ByteArrayInputStream in = new ByteArrayInputStream(plaintext.getBytes());
+
+            PgpSignEncryptOperation op = new PgpSignEncryptOperation(RuntimeEnvironment.getApplication(),
+                    KeyWritableRepository.create(RuntimeEnvironment.getApplication()), null);
+
+            InputData data = new InputData(in, in.available());
+
+            PgpSignEncryptData.Builder pgpData = PgpSignEncryptData.builder();
+            pgpData.setEncryptionMasterKeyIds(new long[] { mStaticRing2.getMasterKeyId() });
+            pgpData.setSignatureMasterKeyId(mStaticRing1.getMasterKeyId());
+            pgpData.setSignatureSubKeyId(KeyringTestingHelper.getSubkeyId(mStaticRing1, 1));
+            pgpData.setSymmetricEncryptionAlgorithm(
+                    PgpSecurityConstants.OpenKeychainSymmetricKeyAlgorithmTags.AES_128);
+
+            PgpSignEncryptResult result = op.execute(pgpData.build(),
+                    CryptoInputParcel.createCryptoInputParcel(new Date(), mKeyPhrase1), data, out);
+            Assert.assertTrue("encryption must succeed", result.success());
+
+            ciphertext = out.toByteArray();
+        }
+
+        { // decrypt with ring2's passphrase, verify ring1's signature
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            ByteArrayInputStream in = new ByteArrayInputStream(ciphertext);
+            InputData data = new InputData(in, in.available());
+
+            PgpDecryptVerifyOperation op = operationWithFakePassphraseCache(
+                    mKeyPhrase2, mStaticRing2.getMasterKeyId(), null);
+            PgpDecryptVerifyInputParcel input = PgpDecryptVerifyInputParcel.builder().build();
+            DecryptVerifyResult result = op.execute(input,
+                    CryptoInputParcel.createCryptoInputParcel(), data, out);
+
+            Assert.assertTrue("decryption must succeed", result.success());
+            Assert.assertArrayEquals("decrypted text should equal plaintext",
+                    plaintext.getBytes(), out.toByteArray());
+            Assert.assertEquals("message must be reported as encrypted",
+                    OpenPgpDecryptionResult.RESULT_ENCRYPTED, result.getDecryptionResult().getResult());
+            Assert.assertEquals("signature must be valid and confirmed",
+                    OpenPgpSignatureResult.RESULT_VALID_KEY_CONFIRMED, result.getSignatureResult().getResult());
+        }
+    }
+
+    /** Helper for {@link #testCorruptedAsymmetricCiphertextIsRejected()}: returns true only if
+     *  the given bytes decrypt successfully to {@code expectedPlaintext}; a failure or a thrown
+     *  exception both count as "did not decrypt to plaintext". */
+    private boolean decryptsToPlaintext(byte[] ciphertext, String expectedPlaintext) {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        ByteArrayInputStream in = new ByteArrayInputStream(ciphertext);
+        InputData data = new InputData(in, in.available());
+
+        PgpDecryptVerifyOperation op = operationWithFakePassphraseCache(mKeyPhrase1, null, null);
+        PgpDecryptVerifyInputParcel input = PgpDecryptVerifyInputParcel.builder().build();
+        try {
+            DecryptVerifyResult result = op.execute(input,
+                    CryptoInputParcel.createCryptoInputParcel(), data, out);
+            return result.success()
+                    && Arrays.equals(out.toByteArray(), expectedPlaintext.getBytes());
+        } catch (RuntimeException e) {
+            return false;
+        }
     }
 
     private PgpDecryptVerifyOperation operationWithFakePassphraseCache(
