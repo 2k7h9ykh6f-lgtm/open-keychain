@@ -84,6 +84,11 @@ public class WebKeyDirectoryClient implements KeyserverClient {
 
         // if we're here that means key retrieval succeeded,
         // would have thrown an exception otherwise
+        return parseKeyData(data);
+    }
+
+    // Package-private: for testing key parsing without HTTP
+    List<ImportKeysListEntry> parseKeyData(byte[] data) throws QueryFailedException {
         try {
             UncachedKeyRing ring = UncachedKeyRing.decodeFromData(data);
             return Collections.singletonList(new ImportKeysListEntry(null, ring));

@@ -72,6 +72,7 @@ dependencies {
         exclude group: 'org.bouncycastle', module: 'bcprov-jdk18on'
     }
     testImplementation 'org.mockito:mockito-core:2.18.0'
+    testImplementation 'com.squareup.okhttp3:mockwebserver:3.14.9'
 
     implementation 'com.jakewharton.timber:timber:4.7.1'
 

@@ -138,6 +138,7 @@ public class HkpKeyserverClient implements KeyserverClient {
 
 
     private HkpKeyserverAddress hkpKeyserver;
+    private OkHttpClient testClient;
 
 
     public static HkpKeyserverClient fromHkpKeyserverAddress(HkpKeyserverAddress hkpKeyserver) {
@@ -147,6 +148,12 @@ public class HkpKeyserverClient implements KeyserverClient {
 
     private HkpKeyserverClient(HkpKeyserverAddress hkpKeyserver) {
         this.hkpKeyserver = hkpKeyserver;
+    }
+
+    // Package-private: for testing with MockWebServer
+    HkpKeyserverClient(HkpKeyserverAddress hkpKeyserver, OkHttpClient client) {
+        this.hkpKeyserver = hkpKeyserver;
+        this.testClient = client;
     }
 
     @Override
@@ -352,8 +359,11 @@ public class HkpKeyserverClient implements KeyserverClient {
                     .post(formBody)
                     .build();
 
+            OkHttpClient addClient = testClient != null ? testClient
+                    : OkHttpClientFactory.getClientPinnedIfAvailable(url.url(), proxy.getProxy());
+
             Response response =
-                    OkHttpClientFactory.getClientPinnedIfAvailable(url.url(), proxy.getProxy())
+                    addClient
                             .newCall(request)
                             .execute();
 
@@ -389,7 +399,8 @@ public class HkpKeyserverClient implements KeyserverClient {
 
     private String query(HttpUrl url, @NonNull ParcelableProxy proxy) throws KeyserverClient.QueryFailedException, HttpError {
         try {
-            OkHttpClient client = OkHttpClientFactory.getClientPinnedIfAvailable(url.url(), proxy.getProxy());
+            OkHttpClient client = testClient != null ? testClient
+                    : OkHttpClientFactory.getClientPinnedIfAvailable(url.url(), proxy.getProxy());
 
             Request request = new Request.Builder()
                     .url(url)

@@ -25,6 +25,7 @@ import timber.log.Timber;
 
 import java.net.Proxy;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Vector;
 
 /**
@@ -39,8 +40,6 @@ public class CloudSearch {
             throws KeyserverClient.CloudSearchFailureException {
 
         final ArrayList<KeyserverClient> servers = new ArrayList<>();
-        // it's a Vector for sync, multiple threads might report problems
-        final Vector<KeyserverClient.CloudSearchFailureException> problems = new Vector<>();
 
         if (cloudPrefs.isKeyserverEnabled()) {
             servers.add(HkpKeyserverClient.fromHkpKeyserverAddress(cloudPrefs.getKeyserver()));
@@ -51,6 +50,18 @@ public class CloudSearch {
         if (cloudPrefs.isWebKeyDirectoryEnabled()) {
             servers.add(WebKeyDirectoryClient.getInstance());
         }
+
+        return searchWithClients(query, proxy, servers);
+    }
+
+    // Package-private: for testing with mock KeyserverClient instances
+    static ArrayList<ImportKeysListEntry> searchWithClients(
+            @NonNull final String query,
+            @NonNull final ParcelableProxy proxy,
+            @NonNull List<KeyserverClient> servers)
+            throws KeyserverClient.CloudSearchFailureException {
+
+        final Vector<KeyserverClient.CloudSearchFailureException> problems = new Vector<>();
 
         int numberOfServers = servers.size();
         final ImportKeysList results = new ImportKeysList(numberOfServers);
@@ -79,7 +90,7 @@ public class CloudSearch {
                 try {
                     results.wait((proxy.getProxy() == Proxy.NO_PROXY ? 30 : 10) * SECONDS);
                     for (Thread thread : searchThreads) {
-                        // kill threads that haven't returned yet
+                        // kill threads that haven’t returned yet
                         thread.interrupt();
                     }
                 } catch (InterruptedException ignored) {
